@@ -1,0 +1,1 @@
+This project was done to create room booking API in collaboration with a selected AI tool (Google Gemini 3 Pro). I have done the project in English even though the assignment was given in Finnish. I thought it's best for my code writing and AI prompts to handle everything in English.
