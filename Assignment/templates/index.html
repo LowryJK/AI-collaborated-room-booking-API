@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Room Booking System</title>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <h1>RedRoom Booking</h1>
+        {% if page == 'dashboard' %}
+            <div class="user-info">
+                <span>Welcome, {{ user.first }} ({{ user.role }})</span>
+                <a href="/logout" class="btn btn-outline">Logout</a>
+            </div>
+        {% endif %}
+    </header>
+
+    <main>
+        {% if page == 'login' %}
+        <div class="auth-container">
+            <div class="card">
+                <h2>Login</h2>
+                <form action="/login" method="POST">
+                    <label>Select User (Demo Mode):</label>
+                    <select name="email" required>
+                        <option value="" disabled selected>Select a user...</option>
+                        {% for u in users %}
+                            <option value="{{ u.email }}">{{ u.first }} {{ u.last }} ({{ u.role }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn">Login</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Create Account</h2>
+                <form action="/register" method="POST">
+                    <input type="text" name="first" placeholder="First Name" required>
+                    <input type="text" name="last" placeholder="Last Name" required>
+                    <input type="email" name="email" placeholder="Email (@ required)" required>
+                    <button type="submit" class="btn">Register</button>
+                </form>
+            </div>
+        </div>
+
+        {% elif page == 'dashboard' %}
+        <div class="dashboard-container">
+            
+            <div class="sidebar">
+                <h3>Book a Room</h3>
+                <div id="status-msg"></div>
+                <form id="bookingForm">
+                    <label>Room</label>
+                    <select id="roomId" required>
+                        {% for r in rooms %}
+                            <option value="{{ r.id }}">{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                    
+                    <label>Start Time</label>
+                    <input type="datetime-local" id="startTime" required>
+                    
+                    <label>End Time</label>
+                    <input type="datetime-local" id="endTime" required>
+                    
+                    <button type="submit" class="btn">Book Now</button>
+                </form>
+                <div class="instructions">
+                    <p><strong>Rules:</strong></p>
+                    <ul>
+                        <li>Min 30 mins, Max 8 hours</li>
+                        <li>No overlaps</li>
+                        <li>Format: DD/MM/YYYY (View)</li>
+                    </ul>
+                </div>
+
+                <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #ccc;">
+
+                <h3>Room Reports</h3>
+                <div class="room-list-nav">
+                    {% for r in rooms %}
+                        <a href="/rooms/{{ r.id }}/list" class="room-link">
+                            📄 List {{ r.name }} Bookings
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="calendar-wrapper">
+                <div id='calendar'></div>
+            </div>
+        </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                var calendarEl = document.getElementById('calendar');
+                var calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'timeGridDay',
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'timeGridDay,timeGridWeek'
+                    },
+                    slotMinTime: "07:00:00",
+                    slotMaxTime: "20:00:00",
+                    nowIndicator: true,
+                    events: '/api/bookings',
+                    eventClick: function(info) {
+                        // Check if user has permission (set in backend)
+                        if (info.event.extendedProps.can_delete) {
+                            if(confirm("Do you want to cancel this booking?")) {
+                                fetch(`/api/bookings/${info.event.id}`, { method: 'DELETE' })
+                                .then(res => res.json())
+                                .then(data => {
+                                    if(data.error) alert(data.error);
+                                    else {
+                                        info.event.remove();
+                                        alert("Booking cancelled.");
+                                    }
+                                });
+                            }
+                        } else {
+                            alert("You cannot modify other users' bookings.");
+                        }
+                    }
+                });
+                calendar.render();
+
+                // Handle Booking Form
+                document.getElementById('bookingForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const statusDiv = document.getElementById('status-msg');
+                    
+                    const payload = {
+                        roomId: document.getElementById('roomId').value,
+                        start: new Date(document.getElementById('startTime').value).toISOString(),
+                        end: new Date(document.getElementById('endTime').value).toISOString()
+                    };
+
+                    fetch('/api/bookings', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.error) {
+                            statusDiv.innerHTML = `<span class="error">${data.error}</span>`;
+                        } else {
+                            statusDiv.innerHTML = `<span class="success">Booking Successful!</span>`;
+                            calendar.refetchEvents();
+                        }
+                    });
+                });
+            });
+        </script>
+        {% endif %}
+    </main>
+</body>
+</html>
