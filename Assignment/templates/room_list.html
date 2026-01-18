@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Room Booking List</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <h1>Booking Report</h1>
+        <div class="user-info">
+            <span style="margin-right: 15px;">{{ user.first }} ({{ user.role }})</span>
+            <a href="/" class="btn btn-outline">Back to Dashboard</a>
+        </div>
+    </header>
+
+    <main style="padding: 2rem;">
+        <div class="card" style="width: 100%; max-width: 800px; margin: 0 auto;">
+            <h2>Bookings for: <span style="color: var(--primary-red);">{{ room.name }}</span></h2>
+            
+            {% if bookings|length == 0 %}
+                <p style="margin-top: 1rem;">No bookings found for this room.</p>
+            {% else %}
+                <table class="booking-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Booked By</th>
+                            <th>Duration</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in bookings %}
+                        <tr>
+                            <td>{{ b.start_time.strftime('%d/%m/%Y') }}</td>
+                            
+                            <td>{{ b.start_time.strftime('%H:%M') }} - {{ b.end_time.strftime('%H:%M') }}</td>
+                            
+                            <td>{{ b.booker_name }}</td>
+                            
+                            <td>{{ ((b.end_time - b.start_time).total_seconds() / 60)|int }} mins</td>
+                            
+                            <td>
+                                {% if user.role == 'admin' or user.id == b.user_id %}
+                                    <button class="btn-small" onclick="deleteBooking('{{ b.id }}')">Cancel</button>
+                                {% else %}
+                                    <span style="color: #999; font-size: 0.8rem;">Locked</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </main>
+
+    <script>
+        function deleteBooking(id) {
+            if(confirm("Are you sure you want to cancel this booking?")) {
+                fetch(`/api/bookings/${id}`, { method: 'DELETE' })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) alert(data.error);
+                    else location.reload(); // Reload page to update table
+                });
+            }
+        }
+    </script>
+</body>
+</html>
