@@ -577,6 +577,219 @@ Prompt 2:
 
 Answer 2:
 
+That is a very good point. While the calendar provides a visual overview, the assignment explicitly asks for a **list view** for a specific room ("*Listaa kaikki tietyn huoneen varaukset*").
+
+To fulfill this, I will add a **"Room Reports"** feature. This will be a separate page where you can select a room and see a structured table of all its bookings, sorted by time.
+
+Here are the necessary changes.
+
+### 1. Update `app.py`
+
+Add this new route to your Flask app. This handles fetching the specific room and filtering the bookings for it.
+
+```python
+# --- Add this to your app.py ---
+
+@app.route('/rooms/<room_id>/list')
+def room_details(room_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    # 1. Find the room
+    room = next((r for r in rooms if r["id"] == room_id), None)
+    if not room:
+        return "Room not found", 404
+
+    # 2. Filter bookings for this room
+    room_bookings = [b for b in bookings if b["room_id"] == room_id]
+
+    # 3. Sort bookings by start time
+    room_bookings.sort(key=lambda x: x['start_time'])
+
+    return render_template('room_list.html', room=room, bookings=room_bookings, user=session)
+
+```
+
+### 2. Create a new file: `templates/room_list.html`
+
+Create this new HTML file in your `templates` folder. This provides the structured table view you requested, adhering to the Red/Black/White theme and DD/MM/YYYY formatting.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Room Booking List</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <h1>Booking Report</h1>
+        <div class="user-info">
+            <a href="/" class="btn btn-outline">Back to Dashboard</a>
+        </div>
+    </header>
+
+    <main style="padding: 2rem;">
+        <div class="card" style="width: 100%; max-width: 800px; margin: 0 auto;">
+            <h2>Bookings for: <span style="color: var(--primary-red);">{{ room.name }}</span></h2>
+            
+            {% if bookings|length == 0 %}
+                <p>No bookings found for this room.</p>
+            {% else %}
+                <table class="booking-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Booked By</th>
+                            <th>Duration</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in bookings %}
+                        <tr>
+                            <td>{{ b.start_time.strftime('%d/%m/%Y') }}</td>
+                            
+                            <td>{{ b.start_time.strftime('%H:%M') }} - {{ b.end_time.strftime('%H:%M') }}</td>
+                            
+                            <td>{{ b.booker_name }}</td>
+                            
+                            <td>{{ ((b.end_time - b.start_time).total_seconds() / 60)|int }} mins</td>
+                            
+                            <td>
+                                {% if user.user_role == 'admin' or user.user_id == b.user_id %}
+                                    <button class="btn-small" onclick="deleteBooking('{{ b.id }}')">Cancel</button>
+                                {% else %}
+                                    <span style="color: #999; font-size: 0.8rem;">Locked</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </main>
+
+    <script>
+        function deleteBooking(id) {
+            if(confirm("Are you sure you want to cancel this booking?")) {
+                fetch(`/api/bookings/${id}`, { method: 'DELETE' })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) alert(data.error);
+                    else location.reload(); // Reload page to update table
+                });
+            }
+        }
+    </script>
+</body>
+</html>
+
+```
+
+### 3. Update `static/style.css`
+
+Add these styles to the bottom of your existing CSS file to make the table look professional.
+
+```css
+/* --- Add to static/style.css --- */
+
+.booking-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.booking-table th, .booking-table td {
+    text-align: left;
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+}
+
+.booking-table th {
+    background-color: var(--black);
+    color: var(--white);
+}
+
+.booking-table tr:hover {
+    background-color: #f1f1f1;
+}
+
+.btn-small {
+    background-color: var(--primary-red);
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.btn-small:hover {
+    background-color: var(--dark-red);
+}
+
+```
+
+### 4. Link it in `templates/index.html`
+
+Finally, add buttons to the sidebar in your main dashboard so users can access these list views. Find the `sidebar` div in `index.html` and add the section labeled "Room Reports":
+
+```html
+<div class="sidebar">
+    <h3>Book a Room</h3>
+    <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #ccc;">
+
+    <h3>Room Reports</h3>
+    <div class="room-list-nav">
+        {% for r in rooms %}
+            <a href="/rooms/{{ r.id }}/list" class="room-link">
+                📄 List {{ r.name }} Bookings
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .room-link {
+        display: block;
+        padding: 8px;
+        color: var(--black);
+        text-decoration: none;
+        border-bottom: 1px solid #eee;
+    }
+    .room-link:hover {
+        background-color: #eee;
+        color: var(--primary-red);
+    }
+</style>
+
+```
+
+### How to test this new feature:
+
+1. Restart the Flask server.
+2. Login and create a few bookings in "Conference Room A".
+3. Look at the sidebar; you will see a new section **"Room Reports"**.
+4. Click **"List Conference Room A Bookings"**.
+5. You will be taken to the new page showing a clean, structured table of all bookings for that room (Name, Time, Date) with a "Cancel" button for valid bookings.
+
+
+
+
+
+Prompt 3:
+
+Please give me the whole files modified with the latest changes to copy
+
+
+
+Answer 3:
+
 "Here are the **complete, updated files**. You can replace your existing files (or create new ones) with the code below.
 
 ### 1. `app.py`
