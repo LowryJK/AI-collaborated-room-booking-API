@@ -185,11 +185,32 @@ def register():
 
 @app.route('/api/bookings', methods=['GET'])
 def get_bookings():
+
+    # Get query parameters
+    start_param = request.args.get('start')
+    end_param = request.args.get('end')
+
     events = []
     current_user_id = session.get('user_id')
     user_role = session.get('user_role')
 
+    # Parse range (if provided) to filter logic
+    range_start = None
+    range_end = None
+    
+    if start_param and end_param:
+        try:
+            range_start = datetime.fromisoformat(start_param.replace('Z', '+00:00')).astimezone(timezone.utc)
+            range_end = datetime.fromisoformat(end_param.replace('Z', '+00:00')).astimezone(timezone.utc)
+        except ValueError:
+            pass
+
     for b in bookings:
+        # Skip bookings entirely outside the requested range
+        if range_start and range_end:
+            if b.end_time <= range_start or b.start_time >= range_end:
+                continue
+
         events.append({
             "id": b.id,
             "resourceId": b.room_id,
@@ -200,6 +221,7 @@ def get_bookings():
                 "can_delete": b.user_id == current_user_id or user_role == 'admin'
             }
         })
+        
     return jsonify(events)
 
 @app.route('/api/bookings', methods=['POST'])
