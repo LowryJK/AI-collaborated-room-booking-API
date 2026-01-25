@@ -179,6 +179,11 @@ def create_booking():
     if not room_id or not start_str or not end_str:
         return jsonify({"error": "Missing booking details"}), 400
 
+    # Check that room_id actually exists in the in-memory database, if not return error
+    room_exists = any(r['id'] == room_id for r in rooms)
+    if not room_exists:
+        return jsonify({"error": "Invalid Room ID"}), 404
+
     try:
         # Convert ISO strings to datetime (handle Z or no Z)
         start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00')).replace(tzinfo=None)
