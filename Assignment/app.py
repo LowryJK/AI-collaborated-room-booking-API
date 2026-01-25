@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from threading import Lock # Added locking mechanism for booking
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key_for_demo"  # Required for session management
@@ -9,6 +10,9 @@ app.secret_key = "super_secret_key_for_demo"  # Required for session management
 users = []
 rooms = []
 bookings = []
+
+# Global lock for writing operations
+booking_lock = Lock()
 
 # --- MODELS & SEEDING ---
 def seed_data():
@@ -194,20 +198,22 @@ def create_booking():
     if duration > (8 * 60):
         return jsonify({"error": "Maximum booking duration is 8 hours"}), 400
 
-    if is_overlapping(room_id, start_dt, end_dt):
-        return jsonify({"error": "Room is already booked for this time slot"}), 409
+    # Lock mechanism added here to checking overlap
+    with booking_lock:
+        if is_overlapping(room_id, start_dt, end_dt):
+            return jsonify({"error": "Room is already booked for this time slot"}), 409
 
-    # Create Booking
-    new_booking = {
-        "id": str(uuid.uuid4()),
-        "user_id": user['id'],
-        "booker_name": f"{user['first']} {user['last']}",
-        "room_id": room_id,
-        "start_time": start_dt,
-        "end_time": end_dt,
-        "created_at": datetime.now()
-    }
-    bookings.append(new_booking)
+        # Create Booking
+        new_booking = {
+            "id": str(uuid.uuid4()),
+            "user_id": user['id'],
+            "booker_name": f"{user['first']} {user['last']}",
+            "room_id": room_id,
+            "start_time": start_dt,
+            "end_time": end_dt,
+            "created_at": datetime.now()
+        }
+        bookings.append(new_booking)
 
     return jsonify({"success": True, "booking": new_booking})
 
@@ -217,15 +223,16 @@ def cancel_booking(booking_id):
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
     
-    booking = next((b for b in bookings if b["id"] == booking_id), None)
-    if not booking:
-        return jsonify({"error": "Booking not found"}), 404
+    with booking_lock:
+        booking = next((b for b in bookings if b["id"] == booking_id), None)
+        if not booking:
+            return jsonify({"error": "Booking not found"}), 404
 
-    # Check ownership or admin status
-    if booking['user_id'] != user['id'] and user['role'] != 'admin':
-        return jsonify({"error": "You can only delete your own bookings"}), 403
+        # Check ownership or admin status
+        if booking['user_id'] != user['id'] and user['role'] != 'admin':
+            return jsonify({"error": "You can only delete your own bookings"}), 403
 
-    bookings.remove(booking)
+        bookings.remove(booking)
     return jsonify({"success": True})
 
 if __name__ == '__main__':
