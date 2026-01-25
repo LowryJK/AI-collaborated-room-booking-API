@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # Added timezone
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from threading import Lock # Added locking mechanism for booking
 
@@ -185,14 +185,16 @@ def create_booking():
         return jsonify({"error": "Invalid Room ID"}), 404
 
     try:
-        # Convert ISO strings to datetime (handle Z or no Z)
-        start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00')).replace(tzinfo=None)
-        end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00')).replace(tzinfo=None)
+        # Removed 'replace(tzinfo=None)' and added 'astimezone(timezone.utc) for UTC standardization'
+        start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00')).astimezone(timezone.utc)
+        end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00')).astimezone(timezone.utc)
     except ValueError:
         return jsonify({"error": "Invalid timestamp format"}), 400
 
-    # 2. Business Rules
-    if start_dt < datetime.now():
+    # 2. Business Rules, now with updated UTC
+    now_utc = datetime.now(timezone.utc)
+
+    if start_dt < now_utc:
         return jsonify({"error": "Cannot book in the past"}), 400
     if start_dt >= end_dt:
         return jsonify({"error": "Start time must be before end time"}), 400
@@ -216,11 +218,12 @@ def create_booking():
             "room_id": room_id,
             "start_time": start_dt,
             "end_time": end_dt,
-            "created_at": datetime.now()
+            "created_at": now_utc
         }
         bookings.append(new_booking)
 
-    return jsonify({"success": True, "booking": new_booking})
+    # Status code 201 added
+    return jsonify({"success": True, "booking": new_booking}), 201
 
 @app.route('/api/bookings/<booking_id>', methods=['DELETE'])
 def cancel_booking(booking_id):
