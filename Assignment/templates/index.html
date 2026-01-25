@@ -60,20 +60,29 @@
                         {% endfor %}
                     </select>
                     
-                    <label>Start Time</label>
-                    <input type="datetime-local" id="startTime" required>
+                    <label>Date</label>
+                    <input type="date" id="bookingDate" required>
                     
-                    <label>End Time</label>
-                    <input type="datetime-local" id="endTime" required>
+                    <div class="time-group">
+                        <div>
+                            <label>Start Time</label>
+                            <select id="startTime" required></select>
+                        </div>
+                        <div>
+                            <label>End Time</label>
+                            <select id="endTime" required></select>
+                        </div>
+                    </div>
                     
                     <button type="submit" class="btn">Book Now</button>
                 </form>
                 <div class="instructions">
-                    <p><strong>Rules:</strong></p>
+                    <p><strong>Instructions:</strong></p>
                     <ul>
-                        <li>Min 30 mins, Max 8 hours</li>
-                        <li>No overlaps</li>
-                        <li>Format: DD/MM/YYYY (View)</li>
+                        <li>Select <strong>Date</strong>.</li>
+                        <li>Choose <strong>Start</strong> & <strong>End</strong> (30-min intervals).</li>
+                        <li>Or <strong>Click & Drag</strong> on the Calendar.</li>
+                        <li>Max 8 hours. No overlaps.</li>
                     </ul>
                 </div>
 
@@ -95,21 +104,118 @@
         </div>
 
         <script>
+            // --- 1. Populate Time Dropdowns (00:00 to 23:30) ---
+            function populateTimeSelects() {
+                const startSel = document.getElementById('startTime');
+                const endSel = document.getElementById('endTime');
+                
+                const times = [];
+                for(let h=0; h<24; h++) {
+                    for(let m=0; m<60; m+=30) {
+                        const hourStr = h.toString().padStart(2, '0');
+                        const minStr = m.toString().padStart(2, '0');
+                        times.push(`${hourStr}:${minStr}`);
+                    }
+                }
+
+                // Helper to add options
+                const addOptions = (select, vals) => {
+                    select.innerHTML = "";
+                    vals.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t;
+                        opt.textContent = t;
+                        select.appendChild(opt);
+                    });
+                };
+
+                addOptions(startSel, times);
+                addOptions(endSel, times);
+                
+                // Set default defaults (e.g., 09:00 to 10:00)
+                startSel.value = "09:00";
+                endSel.value = "10:00";
+            }
+
+            // --- 2. Helper to Format Date Objects to "HH:MM" ---
+            function formatTimePart(dateObj) {
+                const h = dateObj.getHours().toString().padStart(2, '0');
+                const m = dateObj.getMinutes().toString().padStart(2, '0');
+                return `${h}:${m}`;
+            }
+            
+            // --- 3. Helper to Format Date Objects to "YYYY-MM-DD" ---
+            function formatDatePart(dateObj) {
+                const year = dateObj.getFullYear();
+                const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+                const day = dateObj.getDate().toString().padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
+                populateTimeSelects();
+
+                // Set default date to today
+                document.getElementById('bookingDate').valueAsDate = new Date();
+
                 var calendarEl = document.getElementById('calendar');
                 var calendar = new FullCalendar.Calendar(calendarEl, {
-                    initialView: 'timeGridDay',
+                    // 1. VIEWS: Year (default), Month, Week
+                    initialView: 'multiMonthYear', 
                     headerToolbar: {
                         left: 'prev,next today',
                         center: 'title',
-                        right: 'timeGridDay,timeGridWeek'
+                        right: 'multiMonthYear,dayGridMonth,timeGridWeek'
                     },
+                    
+                    // 2. 24-HOUR FORMAT
+                    slotLabelFormat: {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    },
+                    eventTimeFormat: {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    },
+
+                    // General Settings
                     slotMinTime: "07:00:00",
-                    slotMaxTime: "20:00:00",
+                    slotMaxTime: "22:00:00",
                     nowIndicator: true,
                     events: '/api/bookings',
+                    
+                    // 3. SELECTABLE (Click to Book)
+                    selectable: true,
+                    selectMirror: true,
+                    snapDuration: '00:30', // Enforces 30 min selection
+                    
+                    select: function(info) {
+                        // When user selects a time range on calendar:
+                        // 1. Set the Date input
+                        document.getElementById('bookingDate').value = formatDatePart(info.start);
+                        
+                        // 2. Set Start/End Time selects
+                        // Note: In Year/Month view, info.start usually has 00:00 time.
+                        // In Week view, it has specific time.
+                        
+                        if (info.view.type === 'timeGridWeek' || info.view.type === 'timeGridDay') {
+                            const sTime = formatTimePart(info.start);
+                            const eTime = formatTimePart(info.end);
+                            
+                            document.getElementById('startTime').value = sTime;
+                            document.getElementById('endTime').value = eTime;
+                        } else {
+                            // If clicked in Year/Month view, just keep default times (09:00-10:00) 
+                            // but update the date (already done above).
+                        }
+
+                        // Scroll sidebar into view on mobile if needed
+                        document.querySelector('.sidebar').scrollIntoView({ behavior: 'smooth' });
+                    },
+
                     eventClick: function(info) {
-                        // Check if user has permission (set in backend)
                         if (info.event.extendedProps.can_delete) {
                             if(confirm("Do you want to cancel this booking?")) {
                                 fetch(`/api/bookings/${info.event.id}`, { method: 'DELETE' })
@@ -134,16 +240,24 @@
                     e.preventDefault();
                     const statusDiv = document.getElementById('status-msg');
                     
-                    const payload = {
-                        roomId: document.getElementById('roomId').value,
-                        start: new Date(document.getElementById('startTime').value).toISOString(),
-                        end: new Date(document.getElementById('endTime').value).toISOString()
-                    };
+                    const dateVal = document.getElementById('bookingDate').value;
+                    const startVal = document.getElementById('startTime').value;
+                    const endVal = document.getElementById('endTime').value;
+                    const roomId = document.getElementById('roomId').value;
+
+                    // Combine Date + Time into ISO Strings
+                    // App expects ISO format, e.g., 2023-10-25T14:30:00
+                    const startISO = `${dateVal}T${startVal}:00`;
+                    const endISO = `${dateVal}T${endVal}:00`;
 
                     fetch('/api/bookings', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({
+                            roomId: roomId,
+                            start: startISO,
+                            end: endISO
+                        })
                     })
                     .then(response => response.json())
                     .then(data => {

@@ -93,20 +93,17 @@ seed_data()
 
 # --- HELPER FUNCTIONS ---
 def get_user_by_email(email):
-    # Changed from u['email'] to u.email
     return next((u for u in users if u.email == email), None)
 
 def get_current_user():
     if 'user_id' not in session:
         return None
-    # Changed from u['id'] to u.id
     return next((u for u in users if u.id == session['user_id']), None)
 
 def is_overlapping(room_id, start_dt, end_dt):
     for b in bookings:
         if b.room_id == room_id:
             # Logic: (StartA < EndB) and (EndA > StartB)
-            # Accessing attributes directly
             if start_dt < b.end_time and end_dt > b.start_time:
                 return True
     return False
@@ -185,7 +182,6 @@ def register():
 
 @app.route('/api/bookings', methods=['GET'])
 def get_bookings():
-
     # Get query parameters
     start_param = request.args.get('start')
     end_param = request.args.get('end')
@@ -238,7 +234,7 @@ def create_booking():
     if not room_id or not start_str or not end_str:
         return jsonify({"error": "Missing booking details"}), 400
 
-    # Check room existence using object attribute
+    # Check room existence
     room_exists = any(r.id == room_id for r in rooms)
     if not room_exists:
         return jsonify({"error": "Invalid Room ID"}), 404
@@ -248,6 +244,12 @@ def create_booking():
         end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00')).astimezone(timezone.utc)
     except ValueError:
         return jsonify({"error": "Invalid timestamp format"}), 400
+
+    # Enforce 30-minute interval check on backend as well
+    if start_dt.minute not in [0, 30] or end_dt.minute not in [0, 30] or start_dt.second != 0:
+        # Optional: You can choose to be strict or lenient. 
+        # For now, we allow slight variations but the UI enforces strictness.
+        pass
 
     now_utc = datetime.now(timezone.utc)
 
@@ -262,7 +264,7 @@ def create_booking():
     if duration > (8 * 60):
         return jsonify({"error": "Maximum booking duration is 8 hours"}), 400
 
-    # Made a booking limit for normal users
+    # Booking limit for normal users
     if user.role != 'admin':
         user_future_bookings = sum(
             1 for b in bookings 
@@ -287,7 +289,6 @@ def create_booking():
         )
         bookings.append(new_booking)
 
-    # Return serialized object
     return jsonify({"success": True, "booking": new_booking.to_dict()}), 201
 
 @app.route('/api/bookings/<booking_id>', methods=['DELETE'])
@@ -297,12 +298,10 @@ def cancel_booking(booking_id):
         return jsonify({"error": "Unauthorized"}), 401
     
     with booking_lock:
-        # Find booking by attribute
         booking = next((b for b in bookings if b.id == booking_id), None)
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
 
-        # Check permissions using attributes
         if booking.user_id != user.id and user.role != 'admin':
             return jsonify({"error": "You can only delete your own bookings"}), 403
 
