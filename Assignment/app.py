@@ -9,15 +9,18 @@ app.secret_key = "super_secret_key_for_demo"
 # --- DOMAIN MODELS (CLASSES) ---
 
 class User:
-    def __init__(self, uid, first, last, email, role="user"):
+    # UPDATED: Added password field
+    def __init__(self, uid, first, last, email, password, role="user"):
         self.id = uid
         self.first = first
         self.last = last
         self.email = email
+        self.password = password  # Store password
         self.role = role
 
     def to_dict(self):
         """Helper to serialize object for API responses if needed"""
+        # Security: Do NOT include password in serialization
         return {
             "id": self.id,
             "first": self.first,
@@ -71,20 +74,20 @@ def seed_data():
         rooms.append(Room(str(uuid.uuid4()), name))
 
     # 2. Create Users
-    # Admin
+    # UPDATED: Admin with password 'admin123'
     users.append(User(
-        str(uuid.uuid4()), "Admin", "User", "admin@company.com", "admin"
+        str(uuid.uuid4()), "Admin", "User", "admin@company.com", "admin123", "admin"
     ))
     
-    # Standard Users
+    # UPDATED: Standard Users with password 'password123'
     premade_users = [
-        ("John", "Doe", "john@test.com"),
-        ("Jane", "Smith", "jane@test.com"),
-        ("Bob", "Jones", "bob@test.com")
+        ("John", "Doe", "john@test.com", "password123"),
+        ("Jane", "Smith", "jane@test.com", "password123"),
+        ("Bob", "Jones", "bob@test.com", "password123")
     ]
-    for first, last, email in premade_users:
+    for first, last, email, pwd in premade_users:
         users.append(User(
-            str(uuid.uuid4()), first, last, email, "user"
+            str(uuid.uuid4()), first, last, email, pwd, "user"
         ))
     
     print(f"System initialized with {len(rooms)} rooms and {len(users)} users.")
@@ -114,7 +117,8 @@ def is_overlapping(room_id, start_dt, end_dt):
 def index():
     user = get_current_user()
     if not user:
-        return render_template('index.html', page='login', users=users)
+        # Pass potential error message if it exists in args or render context
+        return render_template('index.html', page='login')
     
     return render_template('index.html', page='dashboard', user=user, rooms=rooms)
 
@@ -142,11 +146,18 @@ def room_details(room_id):
 @app.route('/login', methods=['POST'])
 def login():
     email = request.form.get('email')
+    password = request.form.get('password') # Get password from form
+    
     user = get_user_by_email(email)
-    if user:
+    
+    # UPDATED: Verify user exists AND password matches
+    if user and user.password == password:
         session['user_id'] = user.id
         session['user_role'] = user.role
-    return redirect(url_for('index'))
+        return redirect(url_for('index'))
+    
+    # If login fails, reload login page with error
+    return render_template('index.html', page='login', error="Invalid email or password")
 
 @app.route('/logout')
 def logout():
@@ -158,8 +169,9 @@ def register():
     first = request.form.get('first')
     last = request.form.get('last')
     email = request.form.get('email')
+    password = request.form.get('password') # Get password
 
-    if not first or not last or not email:
+    if not first or not last or not email or not password:
         return "Missing fields", 400
     if "@" not in email:
         return "Invalid email format", 400
@@ -171,9 +183,12 @@ def register():
         first=first,
         last=last,
         email=email,
+        password=password, # Save password
         role="user"
     )
     users.append(new_user)
+    
+    # Auto login after register
     session['user_id'] = new_user.id
     session['user_role'] = new_user.role
     return redirect(url_for('index'))
@@ -244,12 +259,6 @@ def create_booking():
         end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00')).astimezone(timezone.utc)
     except ValueError:
         return jsonify({"error": "Invalid timestamp format"}), 400
-
-    # Enforce 30-minute interval check on backend as well
-    if start_dt.minute not in [0, 30] or end_dt.minute not in [0, 30] or start_dt.second != 0:
-        # Optional: You can choose to be strict or lenient. 
-        # For now, we allow slight variations but the UI enforces strictness.
-        pass
 
     now_utc = datetime.now(timezone.utc)
 
