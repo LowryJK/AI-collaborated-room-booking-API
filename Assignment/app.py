@@ -221,7 +221,7 @@ def get_bookings():
                 "can_delete": b.user_id == current_user_id or user_role == 'admin'
             }
         })
-        
+
     return jsonify(events)
 
 @app.route('/api/bookings', methods=['POST'])
@@ -261,6 +261,15 @@ def create_booking():
         return jsonify({"error": "Minimum booking duration is 30 minutes"}), 400
     if duration > (8 * 60):
         return jsonify({"error": "Maximum booking duration is 8 hours"}), 400
+
+    # Made a booking limit for normal users
+    if user.role != 'admin':
+        user_future_bookings = sum(
+            1 for b in bookings 
+            if b.user_id == user.id and b.end_time > now_utc
+        )
+        if user_future_bookings >= 5:
+            return jsonify({"error": "Quota exceeded: You have 5 active bookings."}), 403
 
     with booking_lock:
         if is_overlapping(room_id, start_dt, end_dt):
