@@ -131,5 +131,3 @@ The application exposes the following RESTful endpoints for the frontend to cons
 * **`DELETE /api/bookings/<booking_id>`**: Cancel a specific booking (subject to permission checks).
 
 ---
-
-**Next Step:** Would you like me to create a zip file structure summary or a quick Python script that automatically creates these folders and moves the files for you (assuming they are currently all in one place)?
